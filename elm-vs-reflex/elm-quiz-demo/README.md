@@ -1,6 +1,6 @@
 # Running
 
-Install elm and execute the following:
+Install [Elm](https://elm-lang.org/) and execute the following:
 
 ```bash
 elm make src/Main.elm --output output.js
