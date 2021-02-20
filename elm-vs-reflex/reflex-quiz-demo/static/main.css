@@ -1,0 +1,82 @@
+body{margin:40px
+auto;max-width:650px;line-height:1.6;color:#444;padding:0
+10px}h1,h2,h3{line-height:1.2}
+
+button {
+    padding: 10px;
+    cursor: pointer;
+}
+
+h1, h3 {
+    text-align: center;
+}
+
+#container {
+    width: 800px;
+    margin: auto;
+}
+
+.answers {
+    margin-left: 10px;
+    margin-top: 10px;
+    margin-bottom: 20px;
+}
+
+.question {
+    font-size: 20px;
+}
+
+.answer {
+    font-weight: bold;
+    cursor: pointer;
+    border-top: 0.1px dashed rgba(0,0,0,0.15);
+}
+
+.check-answers-button-container {
+    height: 100px;
+    width: 100%;
+}
+
+.unfinished-quiz-notice {
+    font-style: italic;
+}
+
+.answer::before {
+    content: "☐ ";
+}
+
+.answer.answer-chosen::before {
+    content: "🗹 ";
+}
+
+.answer-chosen.answer-correct.answer-shown::before {
+    content: "✓ ";
+}
+
+.answer-chosen.answer-correct.answer-shown::after {
+    content: " [correct!]";
+}
+
+.answer-chosen.answer-incorrect.answer-shown::after {
+    content: " [wrong!]";
+}
+
+.answer-chosen.answer-incorrect.answer-shown::before {
+    content: "✗ ";
+}
+
+.answer-correct.answer-shown {
+    color: lightgreen;
+}
+
+.answer-incorrect.answer-shown {
+    color: pink;
+}
+
+.answer-correct.answer-chosen.answer-shown {
+    color: green;
+}
+
+.answer-incorrect.answer-chosen.answer-shown {
+    color: red;
+}
