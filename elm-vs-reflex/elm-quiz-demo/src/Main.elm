@@ -70,12 +70,8 @@ updateCanCheckAnswers model =
 updateScore : Model -> Model
 updateScore model =
     let
-        isCorrectAnswer (answer, isChosen) =
-            case (answer.isCorrect, isChosen) of
-                (Correct, Chosen) -> True
-                _ -> False
         hasCorrectAnswer (_, answers) =
-            List.any isCorrectAnswer answers
+            List.any isCorrectAnswerChosen answers
         correctAnswers =
             List.length <| List.filter hasCorrectAnswer model.allQuestions
         totalQuestions = List.length model.allQuestions
@@ -83,10 +79,6 @@ updateScore model =
         { model | score =
               Score { correctAnswers = correctAnswers
                     , totalQuestions = totalQuestions } }
-
-hasChosenAnswer : (QuestionText, List (Answer, IsChosen)) -> Bool
-hasChosenAnswer (_, answers) =
-    List.any (\(_, isChosen) -> isChosen == Chosen) answers
 
 updateAnswers : Int -> IsChosen -> List (Answer, IsChosen) -> List (Answer, IsChosen)
 updateAnswers answerIx newIsChosen =
@@ -157,6 +149,16 @@ toggleChosen isChosen =
     case isChosen of
         Chosen -> NotChosen
         NotChosen -> Chosen
+
+hasChosenAnswer : (QuestionText, List (Answer, IsChosen)) -> Bool
+hasChosenAnswer (_, answers) =
+    List.any (\(_, isChosen) -> isChosen == Chosen) answers
+
+isCorrectAnswerChosen : (Answer, IsChosen) -> Bool
+isCorrectAnswerChosen (answer, isChosen) =
+    case (answer.isCorrect, isChosen) of
+        (Correct, Chosen) -> True
+        _ -> False
 
 mapAllQuestions : (Questions -> Questions) -> Model -> Model
 mapAllQuestions f model = { model | allQuestions = f model.allQuestions }

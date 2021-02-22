@@ -58,28 +58,27 @@ data CheckAnswers = CheckAnswers
 -- ** Типы данных, описывающие внутренние интерфейсы нашего виджета.
 
 -- | Тип, содержащий все события, с которыми мы будем работать.
-data Events t = Events
+data QuizEvents t = QuizEvents
   { selectAnswer :: Event t SelectAnswer
   , showAnswers  :: Event t CheckAnswers }
 
 -- | Тип, содержащий все изменяющиеся (Dynamic) данные.
-data Model t
-  = Model
-    { areAnswersShown :: Dynamic t AreAnswersShown
-    , allQuestions    :: [(QuestionText, [(Answer, Dynamic t IsChosen)])]
-    , canCheckAnswers :: Dynamic t CanCheckAnswers
-    , score           :: Dynamic t Score }
+data QuizState t = QuizState
+  { areAnswersShown :: Dynamic t AreAnswersShown
+  , allQuestions    :: [(QuestionText, [(Answer, Dynamic t IsChosen)])]
+  , canCheckAnswers :: Dynamic t CanCheckAnswers
+  , score           :: Dynamic t Score }
 
 -- * Model
 
 -- | Функция, описывающая всю внутреннюю логику работы виджета. Она принимает
--- тип данных 'Events', хранящий все события и возвращает динамическую модель.
-mkModel :: ObeliskWidget js t route m
+-- тип данных 'QuizEvents', хранящий все события и возвращает динамическую модель.
+mkQuizModel :: ObeliskWidget js t route m
   => [(QuestionText, [Answer])]
   -- ^ Список вопросов с ответами
-  -> Events t
-  -> m (Model t)
-mkModel questions evs = do
+  -> QuizEvents t
+  -> m (QuizState t)
+mkQuizModel questions evs = do
   areAnswersShown <- holdDyn AnswersHidden $ showAnswers evs $> AnswersShown
   allQuestions <- do
     for (enumerate questions) \(qNum, (questionText, answers)) -> do
@@ -111,19 +110,19 @@ mkModel questions evs = do
                 when (isChosen == Chosen && isCorrect answer == Correct) do
                   modify (+ 1)
           return Score {correctAnswers, totalQuestions = length allQuestions}
-  return Model{..}
+  return QuizState{..}
 
 -- * Интерфейс пользователя
 
-quizUI :: ObeliskWidget js t route m => Model t -> m (Events t)
-quizUI Model{..} = wrapUI do
+quizUI :: ObeliskWidget js t route m => QuizState t -> m (QuizEvents t)
+quizUI QuizState{..} = wrapUI do
   selectAnswer <- leftmost <$> for (enumerate allQuestions)
     \(qNum, (questionText, answers)) -> do
       divClass "question" do
         text questionText
       answersUI qNum areAnswersShown answers
   showAnswers <- footerUI canCheckAnswers score
-  return Events{..}
+  return QuizEvents{..}
 
 answersUI :: ObeliskWidget js t route m
   => Int
@@ -221,13 +220,13 @@ questions =
 
 mkQuizWidget :: ObeliskWidget js t route m => [(QuestionText, [Answer])] -> m ()
 mkQuizWidget qs =
-  mkWidget (mkModel qs) quizUI
+  mkWidget (mkQuizModel qs) quizUI
 
 -- * Вспомогательные функции.
 
 mkWidget :: ObeliskWidget js t route m
-  => (events -> m model) -> (model -> m events) -> m ()
-mkWidget model ui  = void $ mfix (model >=> ui)
+  => (events -> m state) -> (state -> m events) -> m ()
+mkWidget model ui  = void (mfix (model >=> ui))
 
 enumerate :: [a] -> [(Int, a)]
 enumerate = zip [0..]
