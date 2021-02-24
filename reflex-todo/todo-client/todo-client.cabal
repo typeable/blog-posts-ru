@@ -23,6 +23,7 @@ executable todo-client
   -- other-extensions:
   build-depends:       base
                      , reflex-dom
+                     , text
                      , todo-common
   hs-source-dirs:      src
   default-language:    Haskell2010
