@@ -72,14 +72,15 @@ data QuizState t = QuizState
 -- * Model
 
 -- | Функция, описывающая всю внутреннюю логику работы виджета. Она принимает
--- тип данных 'QuizEvents', хранящий все события и возвращает динамическое состояние.
+-- тип данных 'QuizEvents', хранящий все события и возвращает динамическое
+-- состояние.
 mkQuizModel :: ObeliskWidget js t route m
   => [(QuestionText, [Answer])]
   -- ^ Список вопросов с ответами
   -> QuizEvents t
   -> m (QuizState t)
-mkQuizModel questions evs = do
-  areAnswersShown <- holdDyn AnswersHidden $ showAnswers evs $> AnswersShown
+mkQuizModel questions events = do
+  areAnswersShown <- holdDyn AnswersHidden $ showAnswers events $> AnswersShown
   allQuestions <- do
     for (enumerate questions) \(qNum, (questionText, answers)) -> do
       (questionText, ) <$> for (enumerate answers) \(aNum, Answer{..}) -> do
@@ -90,26 +91,26 @@ mkQuizModel questions evs = do
               if answerNumber == aNum
               then toggleChosen isChosen
               else NotChosen
-        isChosenDyn <- foldDynMaybe updChosenState NotChosen (selectAnswer evs)
+        isChosenDyn <- foldDynMaybe updChosenState NotChosen
+          (selectAnswer events)
         return (Answer{..}, isChosenDyn)
-  let
-    canCheckAnswers = do
-      -- Для каждого вопроса хотя бы один ответ выбран
-      status <- all (Chosen `elem`) <$> do
-        for allQuestions \(_, answers) -> do
-          for answers \(_, dynIsChosen) -> dynIsChosen
-      return if status then CanCheckAnswers else CantCheckAnswers
-    score = do
-      areAnswersShown >>= \case
-        AnswersHidden -> return NoScore
-        AnswersShown -> do
-          correctAnswers <- flip execStateT 0 do
-            for_ allQuestions \(_, answers) -> do
-              for_ answers \(answer, dynIsChosen) -> do
-                isChosen <- lift dynIsChosen
-                when (isChosen == Chosen && isCorrect answer == Correct) do
-                  modify (+ 1)
-          return Score {correctAnswers, totalQuestions = length allQuestions}
+  canCheckAnswers <- holdUniqDyn do
+    -- Для каждого вопроса хотя бы один ответ выбран
+    allQuestionsAnswered <- all (Chosen `elem`) <$> do
+      for allQuestions \(_, answers) -> do
+        for answers \(_, dynIsChosen) -> dynIsChosen
+    return if allQuestionsAnswered then CanCheckAnswers else CantCheckAnswers
+  score <- holdUniqDyn do
+    areAnswersShown >>= \case
+      AnswersHidden -> return NoScore
+      AnswersShown -> do
+        correctAnswers <- flip execStateT 0 do
+          for_ allQuestions \(_, answers) -> do
+            for_ answers \(answer, dynIsChosen) -> do
+              isChosen <- lift dynIsChosen
+              when (isChosen == Chosen && isCorrect answer == Correct) do
+                modify (+ 1)
+        return Score { correctAnswers, totalQuestions = length allQuestions }
   return QuizState{..}
 
 -- * Интерфейс пользователя
@@ -182,6 +183,7 @@ footerUI canCheckAnswersDyn dynScore = wrapContainer do
   return $ evt $> CheckAnswers
   where wrapContainer = divClass "check-answers-button-container"
 
+-- | Функция, снабжающая наш виджет статическим контентом.
 wrapUI :: ObeliskWidget js t route m => m a -> m a
 wrapUI contents = do
   el "h1" do
