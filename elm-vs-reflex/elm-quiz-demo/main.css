@@ -1,6 +1,14 @@
-body{margin:40px
-auto;max-width:650px;line-height:1.6;color:#444;padding:0
-10px}h1,h2,h3{line-height:1.2}
+body {
+    margin: 40px auto;
+    max-width: 650px;
+    line-height: 1.6;
+    color: #444;
+    padding: 0 10px;
+}
+
+h1, h2, h3 {
+    line-height:1.2;
+}
 
 button {
     padding: 10px;
