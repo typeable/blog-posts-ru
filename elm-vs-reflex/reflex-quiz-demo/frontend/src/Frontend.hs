@@ -81,25 +81,8 @@ mkQuizModel :: ObeliskWidget js t route m
   -> m (QuizState t)
 mkQuizModel questions events = do
   areAnswersShown <- holdDyn AnswersHidden $ showAnswers events $> AnswersShown
-  allQuestions <- do
-    for (enumerate questions) \(qNum, (questionText, answers)) -> do
-      (questionText, ) <$> for (enumerate answers) \(aNum, Answer{..}) -> do
-        let
-          updChosenState SelectAnswer{questionNumber,answerNumber} isChosen = do
-            guard (questionNumber == qNum)
-            return
-              if answerNumber == aNum
-              then toggleChosen isChosen
-              else NotChosen
-        isChosenDyn <- foldDynMaybe updChosenState NotChosen
-          (selectAnswer events)
-        return (Answer{..}, isChosenDyn)
-  canCheckAnswers <- holdUniqDyn do
-    -- Для каждого вопроса хотя бы один ответ выбран
-    allQuestionsAnswered <- all (Chosen `elem`) <$> do
-      for allQuestions \(_, answers) -> do
-        for answers \(_, dynIsChosen) -> dynIsChosen
-    return if allQuestionsAnswered then CanCheckAnswers else CantCheckAnswers
+  allQuestions <- mkAllQuestionsModel questions events
+  canCheckAnswers <- mkCanCheckAnswersModel allQuestions
   score <- holdUniqDyn do
     areAnswersShown >>= \case
       AnswersHidden -> return NoScore
@@ -112,6 +95,37 @@ mkQuizModel questions events = do
                 modify (+ 1)
         return Score { correctAnswers, totalQuestions = length allQuestions }
   return QuizState{..}
+
+mkAllQuestionsModel :: ObeliskWidget js t route m
+  => [(QuestionText, [Answer])]
+  -- ^ Список вопросов с ответами
+  -> QuizEvents t
+  -> m [(QuestionText, [(Answer, Dynamic t IsChosen)])]
+mkAllQuestionsModel questions events = do
+  for (enumerate questions)
+    \(qNum, (questionText, answers)) -> do
+      (questionText, ) <$> for (enumerate answers)
+        \(aNum, Answer{..}) -> do
+          let
+            updChosenState SelectAnswer{questionNumber,answerNumber} isChosen = do
+              guard (questionNumber == qNum)
+              return
+                if answerNumber == aNum
+                then toggleChosen isChosen
+                else NotChosen
+          isChosenDyn <- foldDynMaybe updChosenState NotChosen
+            (selectAnswer events)
+          return (Answer{..}, isChosenDyn)
+
+mkCanCheckAnswersModel :: ObeliskWidget js t route m
+  => [(QuestionText, [(Answer, Dynamic t IsChosen)])]
+  -> m (Dynamic t CanCheckAnswers)
+mkCanCheckAnswersModel allQuestions = holdUniqDyn do
+  -- Для каждого вопроса хотя бы один ответ выбран
+  allQuestionsAnswered <- all (Chosen `elem`) <$> do
+    for allQuestions \(_, answers) -> do
+      for answers \(_, dynIsChosen) -> dynIsChosen
+  return if allQuestionsAnswered then CanCheckAnswers else CantCheckAnswers
 
 -- * Интерфейс пользователя
 
