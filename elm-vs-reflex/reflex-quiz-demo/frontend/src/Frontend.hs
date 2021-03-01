@@ -83,17 +83,7 @@ mkQuizModel questions events = do
   areAnswersShown <- holdDyn AnswersHidden $ showAnswers events $> AnswersShown
   allQuestions <- mkAllQuestionsModel questions events
   canCheckAnswers <- mkCanCheckAnswersModel allQuestions
-  score <- holdUniqDyn do
-    areAnswersShown >>= \case
-      AnswersHidden -> return NoScore
-      AnswersShown -> do
-        correctAnswers <- flip execStateT 0 do
-          for_ allQuestions \(_, answers) -> do
-            for_ answers \(answer, dynIsChosen) -> do
-              isChosen <- lift dynIsChosen
-              when (isChosen == Chosen && isCorrect answer == Correct) do
-                modify (+ 1)
-        return Score { correctAnswers, totalQuestions = length allQuestions }
+  score <- mkScoreModel areAnswersShown allQuestions
   return QuizState{..}
 
 mkAllQuestionsModel :: ObeliskWidget js t route m
@@ -127,6 +117,22 @@ mkCanCheckAnswersModel allQuestions = holdUniqDyn do
       for answers \(_, dynIsChosen) -> dynIsChosen
   return if allQuestionsAnswered then CanCheckAnswers else CantCheckAnswers
 
+mkScoreModel :: ObeliskWidget js t route m
+  => Dynamic t AreAnswersShown
+  -> [(QuestionText, [(Answer, Dynamic t IsChosen)])]
+  -> m (Dynamic t Score)
+mkScoreModel areAnswersShown allQuestions = holdUniqDyn do
+  areAnswersShown >>= \case
+    AnswersHidden -> return NoScore
+    AnswersShown -> do
+      correctAnswers <- flip execStateT 0 do
+        for_ allQuestions \(_, answers) -> do
+          for_ answers \(answer, dynIsChosen) -> do
+            isChosen <- lift dynIsChosen
+            when (isChosen == Chosen && isCorrect answer == Correct) do
+              modify (+ 1)
+      return Score { correctAnswers, totalQuestions = length allQuestions }
+
 -- * Интерфейс пользователя
 
 quizUI :: ObeliskWidget js t route m => QuizState t -> m (QuizEvents t)
@@ -147,25 +153,34 @@ answersUI :: ObeliskWidget js t route m
 answersUI qNum areAnswersShown answers = elClass "div" "answers" do
   leftmost <$> for (enumerate answers)
     \(aNum, (Answer{answerText,isCorrect}, dynIsChosen)) -> do
-      let
-        dynAttrs = do
-          isChosen <- dynIsChosen
-          areShown <- areAnswersShown
-          let
-            className = T.intercalate " " $ execWriter do
-              tell ["answer"]
-              when (isChosen == Chosen) $ tell ["answer-chosen"]
-              tell [ if areShown == AnswersShown
-                     then "answer-shown"
-                     else "answer-hidden" ]
-              tell [ if isCorrect == Correct
-                     then "answer-correct"
-                     else "answer-incorrect" ]
-          return $ "class" =: className
-      event <- domEvent Click . fst <$> elDynAttr' "div" dynAttrs do
-        text answerText
+      event <- answerUI areAnswersShown answerText isCorrect dynIsChosen
       return $ event $>
         SelectAnswer { questionNumber = qNum, answerNumber = aNum }
+
+answerUI :: ObeliskWidget js t route m
+  => Dynamic t AreAnswersShown
+  -> AnswerText
+  -> IsCorrect
+  -> Dynamic t IsChosen
+  -> m (Event t ())
+answerUI areAnswersShown answerText isCorrect dynIsChosen =
+  domEvent Click . fst <$> elDynAttr' "div" dynAttrs do
+    text answerText
+  where
+    dynAttrs = do
+      isChosen <- dynIsChosen
+      areShown <- areAnswersShown
+      let
+        className = T.intercalate " " $ execWriter do
+          tell ["answer"]
+          when (isChosen == Chosen) $ tell ["answer-chosen"]
+          tell [ if areShown == AnswersShown
+                 then "answer-shown"
+                 else "answer-hidden" ]
+          tell [ if isCorrect == Correct
+                 then "answer-correct"
+                 else "answer-incorrect" ]
+      return $ "class" =: className
 
 -- | Виджет, содержащий либо текст с предложением ответить на все вопросы, либо
 -- кнопку проверки ответов, либо информацию о результатах.
