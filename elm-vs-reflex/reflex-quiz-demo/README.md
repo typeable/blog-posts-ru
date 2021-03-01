@@ -1,3 +1,3 @@
-# Running
+# Сборка и запуск
 
-Install [obelisk framework](https://github.com/obsidiansystems/obelisk) an execute `ob run`.
+Установите [obelisk](https://github.com/obsidiansystems/obelisk) и выполните `ob run`.

@@ -1,9 +1,9 @@
-# Running
+# Сборка и запуск
 
-Install [Elm](https://elm-lang.org/) and execute the following:
+Установите [Elm](https://elm-lang.org/) и выполните следующую команду:
 
 ```bash
 elm make src/Main.elm --output output.js
 ```
 
-Then open `index.html` in your browser.
+Теперь откройте `index.html` в браузере.
