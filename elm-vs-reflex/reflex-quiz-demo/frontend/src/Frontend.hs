@@ -191,15 +191,16 @@ footerUI canCheckAnswersDyn dynScore = wrapContainer do
     score <- dynScore
     return if score /= NoScore
       then return never
-      else canCheckAnswers & \case
-      CanCheckAnswers -> do
-        domEvent Click . fst <$> do
-          el' "button" do
-            text "Check answers"
-      CantCheckAnswers -> do
-        divClass "unfinished-quiz-notice" do
-          text "Select answers for all questions before you can get the results."
-        return never
+      else
+        case canCheckAnswers of
+          CanCheckAnswers -> do
+            domEvent Click . fst <$> do
+              el' "button" do
+                text "Check answers"
+          CantCheckAnswers -> do
+            divClass "unfinished-quiz-notice" do
+              text "Select answers for all questions before you can get the results."
+            return never
   dyn_ $ dynScore <&> \case
     NoScore -> blank
     Score{totalQuestions, correctAnswers} -> do
