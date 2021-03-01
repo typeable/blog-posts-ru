@@ -80,7 +80,7 @@ mkQuizModel :: ObeliskWidget js t route m
   -> QuizEvents t
   -> m (QuizState t)
 mkQuizModel questions events = do
-  areAnswersShown <- holdDyn AnswersHidden $ showAnswers events $> AnswersShown
+  areAnswersShown <- holdDyn AnswersHidden (showAnswers events $> AnswersShown)
   allQuestions <- mkAllQuestionsModel questions events
   canCheckAnswers <- mkCanCheckAnswersModel allQuestions
   score <- mkScoreModel areAnswersShown allQuestions
@@ -154,8 +154,7 @@ answersUI qNum areAnswersShown answers = elClass "div" "answers" do
   leftmost <$> for (enumerate answers)
     \(aNum, (Answer{answerText,isCorrect}, dynIsChosen)) -> do
       event <- answerUI areAnswersShown answerText isCorrect dynIsChosen
-      return $ event $>
-        SelectAnswer { questionNumber = qNum, answerNumber = aNum }
+      return (event $> SelectAnswer { questionNumber = qNum, answerNumber = aNum })
 
 answerUI :: ObeliskWidget js t route m
   => Dynamic t AreAnswersShown
@@ -208,7 +207,7 @@ footerUI canCheckAnswersDyn dynScore = wrapContainer do
       text . T.pack $ show correctAnswers
       text " of "
       text . T.pack $ show totalQuestions
-  return $ evt $> CheckAnswers
+  return (evt $> CheckAnswers)
   where wrapContainer = divClass "check-answers-button-container"
 
 -- | Функция, снабжающая наш виджет статическим контентом.
