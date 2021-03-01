@@ -144,29 +144,28 @@ answersUI :: ObeliskWidget js t route m
   -> Dynamic t AreAnswersShown
   -> [(Answer, Dynamic t IsChosen)]
   -> m (Event t SelectAnswer)
-answersUI qNum areAnswersShown answers = do
-  leftmost <$> elClass "div" "answers" do
-    for (enumerate answers)
-      \(aNum, (Answer{answerText,isCorrect}, dynIsChosen)) -> do
-        let
-          dynAttrs = do
-            isChosen <- dynIsChosen
-            areShown <- areAnswersShown
-            let
-              className = T.intercalate " " $ execWriter do
-                tell ["answer"]
-                when (isChosen == Chosen) $ tell ["answer-chosen"]
-                tell [ if areShown == AnswersShown
-                       then "answer-shown"
-                       else "answer-hidden" ]
-                tell [ if isCorrect == Correct
-                       then "answer-correct"
-                       else "answer-incorrect" ]
-            return $ "class" =: className
-        event <- domEvent Click . fst <$> elDynAttr' "div" dynAttrs do
-          text answerText
-        return $ event $>
-          SelectAnswer { questionNumber = qNum, answerNumber = aNum }
+answersUI qNum areAnswersShown answers = elClass "div" "answers" do
+  leftmost <$> for (enumerate answers)
+    \(aNum, (Answer{answerText,isCorrect}, dynIsChosen)) -> do
+      let
+        dynAttrs = do
+          isChosen <- dynIsChosen
+          areShown <- areAnswersShown
+          let
+            className = T.intercalate " " $ execWriter do
+              tell ["answer"]
+              when (isChosen == Chosen) $ tell ["answer-chosen"]
+              tell [ if areShown == AnswersShown
+                     then "answer-shown"
+                     else "answer-hidden" ]
+              tell [ if isCorrect == Correct
+                     then "answer-correct"
+                     else "answer-incorrect" ]
+          return $ "class" =: className
+      event <- domEvent Click . fst <$> elDynAttr' "div" dynAttrs do
+        text answerText
+      return $ event $>
+        SelectAnswer { questionNumber = qNum, answerNumber = aNum }
 
 -- | Виджет, содержащий либо текст с предложением ответить на все вопросы, либо
 -- кнопку проверки ответов, либо информацию о результатах.
