@@ -180,7 +180,7 @@ allQuestions =
     , ( "Which of the following does not contain a value at any point of time?"
       , [ ({ answerText = "Behavior", isCorrect = Incorrect }, NotChosen)
         , ({ answerText = "Event", isCorrect = Correct }, NotChosen)
-        , ({ answerText = "Dynamic", isCorrect = Correct }, NotChosen)
+        , ({ answerText = "Dynamic", isCorrect = Incorrect }, NotChosen)
         ] )
     , ( "Which framework does not use Virtual DOM?"
       , [ ({ answerText = "Elm", isCorrect = Incorrect }, NotChosen)
