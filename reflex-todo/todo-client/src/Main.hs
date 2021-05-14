@@ -4,6 +4,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Main where
 
 import Control.Lens
@@ -15,6 +16,8 @@ import Data.Monoid
 import Data.Text
 import GHC.Generics
 import Reflex.Dom
+
+import GHCJS
 
 main :: IO ()
 main = mainWidgetWithHead headWidget rootWidget
@@ -67,16 +70,16 @@ nextKey = maybe 0 (succ . fst . fst) . maxViewWithKey
 
 rootWidget :: MonadWidget t m => m ()
 rootWidget =
-  divClass "container" $ do
+  divClass "container" $ mdo
     elClass "h2" "text-center mt-3" $ text "Todos"
-    newTodoEv <- newTodoForm
-    rec
-      todosDyn <- foldDyn appEndo mempty $ leftmost [newTodoEv, todoEv]
+    (_, ev) <- runEventWriterT $ do
+      todosDyn <- foldDyn appEndo mempty ev
+      newTodoForm
       delimiter
-      todoEv <- todoListWidget todosDyn
+      todoListWidget todosDyn
     blank
 
-newTodoForm :: MonadWidget t m => m (Event t (Endo Todos))
+newTodoForm :: (EventWriter t (Endo Todos) m, MonadWidget t m) => m ()
 newTodoForm = rowWrapper $ el "form" $ divClass "input-group" $ mdo
   iEl <- inputElement $ def
     & initialAttributes .~
@@ -93,12 +96,13 @@ newTodoForm = rowWrapper $ el "form" $ divClass "input-group" $ mdo
   (btnEl, _) <- divClass "input-group-append" $
     elAttr' "button" btnAttr $ text "Add new entry"
   let btnEv = domEvent Click btnEl
-  pure $ tagPromptlyDyn newTodoDyn $ domEvent Click btnEl
+  tellEvent $ tagPromptlyDyn newTodoDyn $ domEvent Click btnEl
 
-todoListWidget :: MonadWidget t m => Dynamic t Todos -> m (Event t (Endo Todos))
-todoListWidget todosDyn = rowWrapper $ do
-  evs <- listWithKey (M.fromAscList . IM.toAscList <$> todosDyn) todoWidget
-  pure $ switchDyn $ leftmost . M.elems <$> evs
+todoListWidget
+  :: (EventWriter t (Endo Todos) m, MonadWidget t m)
+  => Dynamic t Todos -> m ()
+todoListWidget todosDyn = rowWrapper $
+  void $ listWithKey (M.fromAscList . IM.toAscList <$> todosDyn) todoWidget
 
 rowWrapper :: MonadWidget t m => m a -> m a
 rowWrapper ma =
@@ -109,21 +113,26 @@ delimiter :: MonadWidget t m => m ()
 delimiter = rowWrapper $
   divClass "border-top mt-3" blank
 
-todoWidget :: MonadWidget t m => Int -> Dynamic t Todo
-  -> m (Event t (Endo Todos))
+todoWidget
+  :: (EventWriter t (Endo Todos) m, MonadWidget t m)
+  => Int -> Dynamic t Todo -> m ()
 todoWidget ix todoDyn' = do
   todoDyn <- holdUniqDyn todoDyn'
-  todoEvEv <- dyn $ ffor todoDyn $ \td@Todo{..} -> case todoState of
+  dyn_ $ ffor todoDyn $ \td@Todo{..} -> case todoState of
     TodoDone         -> todoDone ix todoText
     TodoActive False -> todoActive ix todoText
     TodoActive True  -> todoEditable ix todoText
-  switchHold never todoEvEv
 
-todoActive :: MonadWidget t m => Int -> Text -> m (Event t (Endo Todos))
+todoActive
+  :: (EventWriter t (Endo Todos) m, MonadWidget t m)
+  => Int -> Text -> m ()
 todoActive ix todoText = divClass "d-flex border-bottom" $ do
   divClass "p-2 flex-grow-1 my-auto" $
     text todoText
   divClass "p-2 btn-group" $ do
+    (copyEl, _) <- elAttr' "button"
+      (  "class" =: "btn btn-outline-secondary"
+      <> "type" =: "button" ) $ text "Copy"
     (doneEl, _) <- elAttr' "button"
       (  "class" =: "btn btn-outline-secondary"
       <> "type" =: "button" ) $ text "Done"
@@ -133,13 +142,16 @@ todoActive ix todoText = divClass "d-flex border-bottom" $ do
     (delEl, _) <- elAttr' "button"
       (  "class" =: "btn btn-outline-secondary"
       <> "type" =: "button" ) $ text "Drop"
-    pure $ Endo <$> leftmost
+    copyByEvent todoText $ domEvent Click copyEl
+    tellEvent $ Endo <$> leftmost
       [ update (Just . toggleTodo) ix <$ domEvent Click doneEl
       , update (Just . startEdit) ix  <$ domEvent Click editEl
       , delete ix <$ domEvent Click delEl
       ]
 
-todoDone :: MonadWidget t m => Int -> Text -> m (Event t (Endo Todos))
+todoDone
+  :: (EventWriter t (Endo Todos) m, MonadWidget t m)
+  => Int -> Text -> m ()
 todoDone ix todoText = divClass "d-flex border-bottom" $ do
   divClass "p-2 flex-grow-1 my-auto" $
     el "del" $ text todoText
@@ -150,12 +162,14 @@ todoDone ix todoText = divClass "d-flex border-bottom" $ do
     (delEl, _) <- elAttr' "button"
       (  "class" =: "btn btn-outline-secondary"
       <> "type" =: "button" ) $ text "Drop"
-    pure $ Endo <$> leftmost
+    tellEvent $ Endo <$> leftmost
       [ update (Just . toggleTodo) ix <$ domEvent Click doneEl
       , delete ix <$ domEvent Click delEl
       ]
 
-todoEditable :: MonadWidget t m => Int -> Text -> m (Event t (Endo Todos))
+todoEditable
+  :: (EventWriter t (Endo Todos) m, MonadWidget t m)
+  => Int -> Text -> m ()
 todoEditable ix todoText = divClass "d-flex border-bottom" $ do
   updTodoDyn <- divClass "p-2 flex-grow-1 my-auto" $
     editTodoForm todoText
@@ -164,7 +178,7 @@ todoEditable ix todoText = divClass "d-flex border-bottom" $ do
       (  "class" =: "btn btn-outline-secondary"
       <> "type" =: "button" ) $ text "Finish edit"
     let updTodos = \todo -> Endo $ update (Just . finishEdit todo) ix
-    pure $
+    tellEvent $
       tagPromptlyDyn (updTodos <$> updTodoDyn) (domEvent Click doneEl)
 
 editTodoForm :: MonadWidget t m => Text -> m (Dynamic t Text)

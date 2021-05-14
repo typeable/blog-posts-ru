@@ -19,10 +19,11 @@ extra-source-files:  CHANGELOG.md
 
 executable todo-client
   main-is:             Main.hs
-  -- other-modules:
+  other-modules:       GHCJS
   -- other-extensions:
   build-depends:       base
                      , containers
+                     , ghcjs-dom
                      , lens
                      , reflex-dom
                      , text
