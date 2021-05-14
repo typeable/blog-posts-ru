@@ -8,13 +8,21 @@ module Main where
 
 import Control.Lens
 import Control.Monad
+import Control.Monad.IO.Class (liftIO)
+import Data.Functor
 import Data.Maybe
 import Data.Map as M (fromAscList, elems)
 import Data.IntMap as IM
 import Data.Monoid
 import Data.Text
+import Data.Time
 import GHC.Generics
 import Reflex.Dom
+import Reflex.Dom.Contrib.Widgets.ScriptDependent
+
+import GHCJS
+import JSFFI
+
 
 main :: IO ()
 main = mainWidgetWithHead headWidget rootWidget
@@ -32,6 +40,10 @@ headWidget = do
     <> "integrity" =: "sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh"
     <> "crossorigin" =: "anonymous")
     blank
+  elAttr "link"
+    (  "rel" =: "stylesheet"
+    <> "href" =: "https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" )
+    blank
   el "title" $ text "TODO App"
 
 type Todos = IntMap Todo
@@ -42,12 +54,13 @@ data TodoState
   deriving (Generic, Eq, Show)
 
 data Todo = Todo
-  { todoText  :: Text
-  , todoState :: TodoState }
+  { todoText     :: Text
+  , todoDeadline :: Day
+  , todoState    :: TodoState }
   deriving (Generic, Eq, Show)
 
-newTodo :: Text -> Todo
-newTodo todoText = Todo { todoState = TodoActive False, .. }
+newTodo :: Text -> Day -> Todo
+newTodo todoText todoDeadline = Todo {todoState = TodoActive False, ..}
 
 startEdit :: Todo -> Todo
 startEdit todo = todo { todoState = TodoActive True }
@@ -84,10 +97,25 @@ newTodoForm = rowWrapper $ el "form" $ divClass "input-group" $ mdo
       <> "class" =: "form-control"
       <> "placeholder" =: "Todo" )
     & inputElementConfig_setValue .~ ("" <$ btnEv)
+  dEl <- inputElement $ def
+    & initialAttributes .~
+      (  "type" =: "text"
+      <> "class" =: "form-control"
+      <> "placeholder" =: "Deadline"
+      <> "style" =: "max-width: 150px" )
+  pb <- getPostBuild
+  widgetHoldUntilDefined "flatpickr"
+    (pb $> "https://cdn.jsdelivr.net/npm/flatpickr")
+    blank
+    (addDatePicker dEl)
+  today <- utctDay <$> liftIO getCurrentTime
   let
-    addNewTodo = \todo -> Endo $ \todos ->
-      insert (nextKey todos) (newTodo todo) todos
-    newTodoDyn = addNewTodo <$> value iEl
+    dateStrDyn = value dEl
+    dateDyn = fromMaybe today . parseTimeM True
+      defaultTimeLocale "%Y-%m-%d" . unpack <$> dateStrDyn
+    addNewTodo = \todo date -> Endo $ \todos ->
+      insert (nextKey todos) (newTodo todo date) todos
+    newTodoDyn = addNewTodo <$> value iEl <*> dateDyn
     btnAttr = "class" =: "btn btn-outline-secondary"
       <> "type" =: "button"
   (btnEl, _) <- divClass "input-group-append" $
@@ -112,8 +140,8 @@ delimiter = rowWrapper $
 todoWidget :: MonadWidget t m => Int -> Dynamic t Todo
   -> m (Event t (Endo Todos))
 todoWidget ix todoDyn' = do
-  todoDyn <- holdUniqDyn todoDyn'
-  todoEvEv <- dyn $ ffor todoDyn $ \td@Todo{..} -> case todoState of
+  -- todoDyn <- holdUniqDyn todoDyn'
+  todoEvEv <- dyn $ ffor todoDyn' $ \td@Todo{..} -> case todoState of
     TodoDone         -> todoDone ix todoText
     TodoActive False -> todoActive ix todoText
     TodoActive True  -> todoEditable ix todoText
@@ -124,6 +152,10 @@ todoActive ix todoText = divClass "d-flex border-bottom" $ do
   divClass "p-2 flex-grow-1 my-auto" $
     text todoText
   divClass "p-2 btn-group" $ do
+    (copyEl, _) <- elAttr' "button"
+      (  "class" =: "btn btn-outline-secondary"
+      <> "type" =: "button" ) $ text "Copy"
+    copyByEvent todoText $ domEvent Click copyEl
     (doneEl, _) <- elAttr' "button"
       (  "class" =: "btn btn-outline-secondary"
       <> "type" =: "button" ) $ text "Done"
@@ -144,6 +176,10 @@ todoDone ix todoText = divClass "d-flex border-bottom" $ do
   divClass "p-2 flex-grow-1 my-auto" $
     el "del" $ text todoText
   divClass "p-2 btn-group" $ do
+    (copyEl, _) <- elAttr' "button"
+      (  "class" =: "btn btn-outline-secondary"
+      <> "type" =: "button" ) $ text "Copy"
+    copyByEvent todoText $ domEvent Click copyEl
     (doneEl, _) <- elAttr' "button"
       (  "class" =: "btn btn-outline-secondary"
       <> "type" =: "button" ) $ text "Undo"
