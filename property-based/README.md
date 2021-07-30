@@ -59,7 +59,7 @@ instance Arbitrary Json where
               ]
 ```
 
-Стоит обратить внимание на то, что здесь мы делим size на 2, а не вычитаем единицу. Инстанс Arbitrary для списка породит список длины, не превышающей size. Это позволяет нам сделать зависимость среднего размера дерева от size "более линейной". На практике нам всего лишь нужно, чтобы средний размер получаемых деревьев был ограничен какой-то функцией от size, и чтобы не было расхождения из-за того, что каждый из конструкторов Array или Object порождает бесконечное дерево (в силу того, что выход из рекурсии случается статистически реже, чем порождение новых конструкторов). Выбор константы "2" здесь произволен.
+Стоит обратить внимание на то, что здесь мы делим size на 2, а не вычитаем единицу. Инстанс Arbitrary для списка породит список длины, не превышающей size. Это позволяет нам сделать зависимость среднего размера дерева от size логарифмической, а не экспоненциальной. На практике нам не требуется линейная зависимость, нужно лишь, чтобы не было расхождения из-за того, что каждый из конструкторов Array или Object порождает бесконечное дерево (в силу того, что выход из рекурсии случается статистически реже, чем порождение новых конструкторов). Выбор константы "2" здесь произволен.
 
 Протестируем наш генератор:
 
@@ -76,14 +76,9 @@ Number (-6.706967599855459)
 
 Как видно, Arbitrary-инстанс для типа String генерирует "потенциально проблематичные" строки, чтобы попытаться спровоцировать типичные ошибки в приложениях, использующих эти данные. Программисту стоит помнить о специальных символах, пустах строках, whitespace и т.п..
 
-
--------------------------- TODO
-
-
-
+Теперь реализуем сериалайзер и парсер для нашего типа данных.
 
 Сериализация реализуется достаточно прямолинейно:
-
 
 ```haskell
 serialize :: Json -> String
@@ -99,8 +94,7 @@ serialize (Number n) = show n
 
 А для парсинга воспользуемся стандартным подходом, который используется в библиотеках комбинаторов парсеров - все функции для парсина будут иметь тип `String -> Maybe (a, String)`, где a - тип, который мы хотим получить в результате, а второй компонент пары (имеющий тип String) - оставшаяся непоглощённой парсером часть строки.
 
-
-Удобство формата в том, что по первому символу мы можем сказать, с каким типом мы имеем дело, поэтому бэктрекинг не нужен.
+Удобство выбранного нами формата в том, что по первому символу мы можем сказать, с каким типом мы имеем дело, поэтому бэктрекинг не нужен.
 
 Здесь мы не будем останавливаться на самом коде и перейдём к тестированию.
 
@@ -150,10 +144,9 @@ parse input = case decode input of
 
 Сформулируем свойство, которое мы хотим протестировать:
 
-
 ```
-prop_serialize_parse :: Json -> Bool
-prop_serialize_parse json = parse (serialize json) == Just json
+prop_serialize_parse :: Json -> Property
+prop_serialize_parse json = parse (serialize json) === Just json
 ```
 
 И запустим проверку данного свойства:
@@ -180,62 +173,6 @@ decodeString = listToMaybe . reads . ('"':)
 ```
 *> verboseCheck prop_serialize_parse
 Failed:
-Array [Array [Array [Object []],Number (-0.8351726355842278)],Object [("\176011",Object []),("A\SOH",Number 1.0421319030746985),("",String "\44106\DC2+"),("L\141736{",Number (-1.920670214685874))]]
-
-Passed:
-Array []
-
-Failed:
-Array [Object [("\176011",Object []),("A\SOH",Number 1.0421319030746985),("",String "\44106\DC2+"),("L\141736{",Number (-1.920670214685874))]]
-
-Passed:
-Array []
-
-Passed:
-Array [Object []]
-
-Failed:
-Array [Object [("",String "\44106\DC2+"),("L\141736{",Number (-1.920670214685874))]]
-
-Passed:
-Array []
-
-Passed:
-Array [Object []]
-
-Failed:
-Array [Object [("L\141736{",Number (-1.920670214685874))]]
-
-Passed:
-Array []
-
-Passed:
-Array [Object []]
-
-Failed:
-Array [Object [("",Number (-1.920670214685874))]]
-
-Passed:
-Array []
-
-Passed:
-Array [Object []]
-
-Passed:
-Array [Object [("",Number 0.0)]]
-
-Failed:
-Array [Object [("",Number (-1.0))]]
-
-Passed:
-Array []
-
-Passed:
-Array [Object []]
-
-Passed:
-Array [Object [("",Number 0.0)]]
-
 *** Failed! Falsified (after 5 tests and 5 shrinks):
 Array [Object [("",Number (-1.0))]]
 ```
@@ -254,8 +191,168 @@ decode (c : rest)
 Object [("",Object [("",String "\n")])]
 ```
 
-# Историческая справка
+Попробуем протестировать нашу реализацию подмножества JSON относительно существующей (библиотека aeson). Мы хотим убедиться, что сериализация возвращает валидный JSON:
 
-# Как избежать комбинаторного взрыва?
 
-# shrink
+```
+prop_serialize_returns_json :: Json -> Property
+prop_serialize_returns_json json = Aeson.decode @Aeson.Value (BS.pack $ serialize json) =/= Nothing
+```
+
+
+Результат:
+
+```
+*** Failed! Falsified (after 4 tests):
+String "\ETB\171675^\153309mX"
+Nothing == Nothing
+```
+
+Конечно же, мы неправильно работаем с escape-последовательностями. Инстанс Show для String не обрабатывает их так же, как декодировщик из `aeson`.
+
+Конечно, нам следовало бы реализовать сериализацию правильно, но т.к. этот пост о QuickCheck, интереснее будет показать, как заставить QuickCheck не проверять значения, которые заведомо нам "не интересны".
+
+Допустим, мы решили ограничить строки только печатными символами из диапазона кодов 32-126.
+
+Для этого можно использовать функцию `suchThat :: Gen a -> (a -> Bool) -> Gen a`:
+
+```
+instance Arbitrary Json where
+  arbitrary = sized arbitrary'
+    where
+      arbitraryString =
+        arbitrary `suchThat` all ((\code -> code >= 32 && code <= 126) . ord)
+      arbitrary' 0 = pure $ Array []
+      arbitrary' n =
+        oneof [ Object <$> listOf
+                ((,) <$> arbitraryString <*> resize (n `div` 2) arbitrary)
+              , Array <$> resize (n `div` 2) arbitrary
+              , String <$> arbitraryString
+              , Number <$> arbitrary
+              ]
+```
+
+Запустив такой тест, мы заметим, что время его работы существенно возросло, т.к. теперь мы отбрасываем те строки, в которых есть хотя бы один символ не из заданного интервала.
+
+Следующий код даёт понять, что мы используем примерно 6% сгенерированных примеров:
+
+```
+ > quickCheck (\s -> classify (all ((\code -> code >= 32 && code <= 126) . ord) s) "useful" (s === s))
++++ OK, passed 100 tests (6% useful).
+```
+
+Поэтому такой способ генерации строк не годится. Чтобы тесты были быстрыми, необходимо всегда стараться сразу генерировать данные, удовлетворяющие нужным инвариантам, а не использовать suchThat и подобные функции.
+
+Ситуация становится немного лучше, если поместить suchThat внутрь `listOf` (`String` в Haskell - это список символов (`[Char]`)):
+
+```
+arbitraryString =
+  listOf (arbitrary `suchThat` ((\code -> code >= 32 && code <= 126) . ord))
+```
+
+Однако, ещё быстрее сразу генерировать символ из заданного интервала:
+
+```
+arbitraryString = listOf (chr <$> chooseInt (32, 126))
+```
+
+К сожалению, далеко не всегда легко написать генератор, выдающий только значения, удовлетворяющие определённому предикату, особенно если предикат требует каким-то образом связанных ограничений на различные части структуры.
+
+## Shrinking
+
+Shrinking -- способ "уменьшить" найденный пример до минимального возможного. Функция `shrink :: Arbitrary a => a -> [a]` вступает в дело, когда контрпример уже найден.
+
+shrink должна возвращать конечный (и, возможно, пустой) список всех возможных "упрощений" значения с типом a. Пустой список означает, что минимальный контрпример найден.
+
+Просмотреть результат работы shrink можно, запустив `verboseCheck`. Допустим, мы хотим проверить достаточно странное утверждение о том, что все строки не содержат ровно двух символов 'a'. После нахождения первого контрпримера мы видим, как shrink пытается последовательно уменьшить строку:
+
+```
+> verboseCheck (\str -> 2 /= length (filter (== 'a') str))
+
+  ...
+
+Failed:
+"a8aL"
+
+Passed:
+""
+
+Passed:
+"aL"
+
+Passed:
+"a8"
+
+Passed:
+"8aL"
+
+Failed:
+"aaL"
+
+Passed:
+""
+
+Passed:
+"aL"
+
+Passed:
+"aL"
+
+Failed:
+"aa"
+
+Passed:
+""
+
+Passed:
+"a"
+
+Passed:
+"a"
+
+*** Failed! Falsified (after 69 tests and 10 shrinks):
+"aa"
+```
+
+Этот алгоритм поиска реализован в функции shrinkList:
+
+```
+shrinkList :: (a -> [a]) -> [a] -> [[a]]
+shrinkList shr xs = concat [ removes k n xs | k <- takeWhile (>0) (iterate (`div`2) n) ]
+                 ++ shrinkOne xs
+ where
+  n = length xs
+
+  shrinkOne []     = []
+  shrinkOne (x:xs) = [ x':xs | x'  <- shr x ]
+                  ++ [ x:xs' | xs' <- shrinkOne xs ]
+
+  removes k n xs
+    | k > n     = []
+    | null xs2  = [[]]
+    | otherwise = xs2 : map (xs1 ++) (removes k (n-k) xs2)
+   where
+    xs1 = take k xs
+    xs2 = drop k xs
+```
+
+shrinkList пытается:
+
+- Удалить половину списка, четверть списка, восьмую часть и т.д. с конца и с начала
+- Применить shrink к одному из элементов списка
+
+Напишем shrink для Json (просто переиспользуем shrink для пары, списка, строки и числа):
+
+```
+shrink (Object props)  = Object <$> shrink props
+shrink (Array entries) = Array <$> shrink entries
+shrink (String str)    = String <$> shrink str
+shrink (Number n)      = Number <$> shrink n
+``
+
+-- TODO: использовать generic-random
+
+
+```
+  arbitrary = genericArbitraryRec uniform `withBaseCase` return (Array [])
+```

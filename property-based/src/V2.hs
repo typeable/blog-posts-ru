@@ -1,14 +1,17 @@
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric    #-}
+{-# LANGUAGE TypeApplications #-}
 module V2 where
 
-import           Control.Arrow   (first, (***))
-import           Data.Char       (isDigit)
-import           Data.List       (intercalate)
+import           Control.Arrow              (first, (***))
+import qualified Data.Aeson                 as Aeson
+import qualified Data.ByteString.Lazy.Char8 as BS
+import           Data.Char                  (chr, isDigit, ord)
+import           Data.List                  (intercalate)
 import           Data.Maybe
 import           Generic.Random
 import           GHC.Generics
 import           Test.QuickCheck
-import           Text.Read       (reads)
+import           Text.Read                  (reads)
 
 data Json
   = Object [(String, Json)]
@@ -18,7 +21,21 @@ data Json
   deriving (Show, Eq, Generic)
 
 instance Arbitrary Json where
-  arbitrary = genericArbitraryRec uniform `withBaseCase` return (Array [])
+  arbitrary = sized arbitrary'
+    where
+      arbitraryString = listOf (chr <$> chooseInt (32, 126))
+      arbitrary' 0 = pure $ Array []
+      arbitrary' n =
+        oneof [ Object <$> listOf
+                ((,) <$> arbitraryString <*> resize (n `div` 2) arbitrary)
+              , Array <$> resize (n `div` 2) arbitrary
+              , String <$> arbitraryString
+              , Number <$> arbitrary
+              ]
+  shrink (Object props)  = Object <$> shrink props
+  shrink (Array entries) = Array <$> shrink entries
+  shrink (String str)    = String <$> shrink str
+  shrink (Number n)      = Number <$> shrink n
 
 serialize :: Json -> String
 serialize (Object props) =
@@ -81,3 +98,6 @@ example2 = Object
 
 prop_serialize_parse :: Json -> Property
 prop_serialize_parse json = parse (serialize json) === Just json
+
+prop_serialize_returns_json :: Json -> Property
+prop_serialize_returns_json json = Aeson.decode @Aeson.Value (BS.pack $ serialize json) =/= Nothing

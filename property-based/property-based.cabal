@@ -15,13 +15,15 @@ maintainer:          klntsky@typeable.io
 -- copyright:
 -- category:
 build-type:          Simple
-extra-source-files:  CHANGELOG.md, README.md
+extra-source-files:  README.md
 
 executable property-based
   main-is:             Main.hs
   other-modules:       V1, V2
   -- other-extensions:
   build-depends:       base >=4.12 && <4.13
+                     , aeson
+                     , bytestring
                      , QuickCheck
                      , generic-random
   hs-source-dirs:      src
